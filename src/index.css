@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/* Custom classes for perfect A4 scaling and print outputs */
+@layer utilities {
+  /* Hide standard browser page headers and footers, and force margin to 0 */
+  @page {
+    size: A4 portrait;
+    margin: 0 !important;
+  }
+
+  /* Custom font utilities for Polaroid layout */
+  .font-handwritten {
+    font-family: 'Caveat', cursive, sans-serif !important;
+  }
+  .font-typewriter {
+    font-family: 'Special Elite', monospace, 'Courier New', Courier !important;
+  }
+  .font-sans-jakarta {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+  }
+}
+
+/* Screen and printing utility definitions */
+@media print {
+  @page {
+    size: auto;
+    margin: 0mm !important;
+  }
+
+  /* Suppress everything on screen */
+  html, body, #root {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    height: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Make sure background colors print correctly */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide the preview workspace and control panel completely */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Show and size the print area correctly in natural document flow */
+  #print-area {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background-color: #ffffff !important;
+    width: auto !important;
+  }
+
+  /* Page-break control for each virtual A4 page */
+  .print-page-sheet {
+    width: 210mm !important;
+    height: 297mm !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background-color: #ffffff !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    position: relative !important;
+  }
+
+  /* Landscape layout overrides */
+  .print-page-sheet-landscape {
+    width: 297mm !important;
+    height: 210mm !important;
+  }
+}
+
+/* Custom shadow effects for digital canvas workspace */
+.studio-canvas-shadow {
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.25), 0 4px 12px -4px rgba(0, 0, 0, 0.2);
+}
+
+.studio-grid-dot {
+  background-image: radial-gradient(#e2e8f0 1.2px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+
+.dark .studio-grid-dot {
+  background-image: radial-gradient(#334155 1.2px, transparent 1.2px);
+  background-size: 16px 16px;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "PrintA4 - Template Cetak Foto",
+  "description": "Aplikasi penata dan cetak foto segala ukuran (Pas Foto 2x3, 3x4, 4x6, 2R, 3R, 4R, Kustom) di kertas A4 secara instan dan presisi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
