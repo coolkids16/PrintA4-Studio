@@ -4,21 +4,13 @@ import {
   Settings, Sun, Moon, HelpCircle, Check, Sparkles, Scale, 
   FileText, X, ChevronRight, Image as ImageIcon, AlertCircle,
   ZoomIn, ZoomOut, RefreshCw, Layers, Sliders, Layout, Monitor, Eye,
-  Undo, Redo, Grid, Move, Download, FileDown
+  Undo, Redo, Grid, Move, Download, FileDown, Scissors
 } from 'lucide-react';
-
-// @ts-ignore
-import sampleMan from './assets/images/sample_portrait_man_1791416331175.jpg';
-// @ts-ignore
-import sampleWoman from './assets/images/sample_portrait_woman_1791416347732.jpg';
-// @ts-ignore
-import sampleGirl from './assets/images/sample_portrait_girl_1791416362306.jpg';
 
 interface UploadedImage {
   id: string;
   name: string;
   src: string;
-  isSample?: boolean;
 }
 
 interface PhotoSlot {
@@ -34,6 +26,7 @@ interface PhotoSlot {
   isGrayscale: boolean;
   brightness: number; // 0.5 to 1.5
   contrast: number; // 0.5 to 1.5
+  saturation?: number; // 0.0 to 2.0 (default 1.0)
   
   // Freeform positioning coordinates (used in 'freeform' mode)
   xCm?: number;
@@ -54,6 +47,92 @@ interface SizePreset {
   description: string;
 }
 
+// Paper configuration & presets (supports standard A4 and leftover scrap paper pieces from A4)
+export interface PaperPreset {
+  id: string;
+  name: string;
+  shortDesc: string;
+  category: 'standard' | 'scrap';
+  widthCm: number;  // portrait width (<= 21.0 cm)
+  heightCm: number; // portrait height (<= 29.7 cm)
+  badge?: string;
+}
+
+export const PAPER_PRESETS: PaperPreset[] = [
+  {
+    id: 'a4-full',
+    name: 'A4 Standar Penuh',
+    shortDesc: 'Lembar A4 utuh 100%',
+    category: 'standard',
+    widthCm: 21.0,
+    heightCm: 29.7,
+    badge: 'A4 Penuh',
+  },
+  {
+    id: 'scrap-a5',
+    name: 'Sisa 1/2 A4 (A5 Melintang)',
+    shortDesc: 'Potongan separuh A4 melintang',
+    category: 'scrap',
+    widthCm: 14.8,
+    heightCm: 21.0,
+    badge: '1/2 A4 (50%)',
+  },
+  {
+    id: 'scrap-half-v',
+    name: 'Sisa 1/2 A4 (Strip Memanjang)',
+    shortDesc: 'Potongan separuh A4 tegak lurus',
+    category: 'scrap',
+    widthCm: 10.5,
+    heightCm: 29.7,
+    badge: '1/2 A4 (50%)',
+  },
+  {
+    id: 'scrap-third',
+    name: 'Sisa 1/3 A4 (Brosur / Strip)',
+    shortDesc: 'Potongan sepertiga A4',
+    category: 'scrap',
+    widthCm: 9.9,
+    heightCm: 21.0,
+    badge: '1/3 A4 (33%)',
+  },
+  {
+    id: 'scrap-a6',
+    name: 'Sisa 1/4 A4 (A6 / Kartu Pos)',
+    shortDesc: 'Potongan seperempat lembar A4',
+    category: 'scrap',
+    widthCm: 10.5,
+    heightCm: 14.8,
+    badge: '1/4 A4 (25%)',
+  },
+  {
+    id: 'scrap-4r',
+    name: 'Sisa Potongan Foto 4R',
+    shortDesc: 'Ukuran sisa standar foto 4R',
+    category: 'scrap',
+    widthCm: 10.2,
+    heightCm: 15.2,
+    badge: 'Sisa 4R',
+  },
+  {
+    id: 'scrap-photobooth',
+    name: 'Sisa Strip Photobooth',
+    shortDesc: 'Strip vertikal sisa potong foto',
+    category: 'scrap',
+    widthCm: 5.0,
+    heightCm: 15.0,
+    badge: 'Strip Foto',
+  },
+  {
+    id: 'custom-scrap',
+    name: 'Kustom Sisa Kertas (cm / mm)',
+    shortDesc: 'Tentukan ukuran sisa cetak sendiri (Maksimal A4)',
+    category: 'scrap',
+    widthCm: 14.8,
+    heightCm: 21.0,
+    badge: 'Kustom Sisa',
+  },
+];
+
 // Complete history state container
 interface CanvasHistoryState {
   canvasSlots: PhotoSlot[];
@@ -62,6 +141,9 @@ interface CanvasHistoryState {
   gapCm: number;
   borderStyle: 'none' | 'solid' | 'dotted' | 'crop';
   layoutMode: 'auto' | 'freeform';
+  paperPresetId?: string;
+  customPaperWidthCm?: number;
+  customPaperHeightCm?: number;
 }
 
 interface DragState {
@@ -95,163 +177,19 @@ const BG_COLOR_OPTIONS = [
   { id: 'gray', name: 'Abu-Abu Studio', hex: '#64748b' },
 ];
 
-// Default canvas photo arrangement
-const INITIAL_SLOTS: PhotoSlot[] = [
-  {
-    id: 'slot-1',
-    imageId: 'sample-girl',
-    widthCm: 4.0,
-    heightCm: 6.0,
-    rotate: 0,
-    zoom: 1.05,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: 'transparent',
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.0,
-  },
-  {
-    id: 'slot-2',
-    imageId: 'sample-girl',
-    widthCm: 4.0,
-    heightCm: 6.0,
-    rotate: 0,
-    zoom: 1.05,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: '#db2727', // Red back drop
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.0,
-  },
-  {
-    id: 'slot-3',
-    imageId: 'sample-woman',
-    widthCm: 5.4,
-    heightCm: 8.6,
-    rotate: 0,
-    zoom: 1.15,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: 'transparent',
-    isGrayscale: false,
-    brightness: 1.05,
-    contrast: 1.0,
-    isPolaroid: true, // Polaroid template default
-    polaroidCaption: 'Kenangan Indah 🍂',
-    polaroidFont: 'handwritten',
-  },
-  {
-    id: 'slot-4',
-    imageId: 'sample-man',
-    widthCm: 5.4,
-    heightCm: 8.6,
-    rotate: 0,
-    zoom: 1.15,
-    offsetX: 0,
-    offsetY: -3,
-    bgColor: 'transparent',
-    isGrayscale: true, // BW photo requirement
-    brightness: 1.0,
-    contrast: 1.1,
-    isPolaroid: true, // Polaroid template default grayscale
-    polaroidCaption: 'Retro Vibe 1994',
-    polaroidFont: 'typewriter',
-  },
-  {
-    id: 'slot-5',
-    imageId: 'sample-woman',
-    widthCm: 3.0,
-    heightCm: 4.0,
-    rotate: 0,
-    zoom: 1.1,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: '#2563eb', // Blue back drop
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.05,
-  },
-  {
-    id: 'slot-6',
-    imageId: 'sample-man',
-    widthCm: 3.0,
-    heightCm: 4.0,
-    rotate: 0,
-    zoom: 1.2,
-    offsetX: 0,
-    offsetY: -3,
-    bgColor: '#db2727', // BW with red backdrop
-    isGrayscale: true,
-    brightness: 1.0,
-    contrast: 1.1,
-  },
-  {
-    id: 'slot-7',
-    imageId: 'sample-girl',
-    widthCm: 2.0,
-    heightCm: 3.0,
-    rotate: 0,
-    zoom: 1.0,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: 'transparent',
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.0,
-  },
-  {
-    id: 'slot-8',
-    imageId: 'sample-girl',
-    widthCm: 2.0,
-    heightCm: 3.0,
-    rotate: 0,
-    zoom: 1.0,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: '#2563eb',
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.0,
-  },
-  {
-    id: 'slot-9',
-    imageId: 'sample-girl',
-    widthCm: 2.0,
-    heightCm: 3.0,
-    rotate: 0,
-    zoom: 1.0,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: '#db2727',
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.0,
-  },
-  {
-    id: 'slot-10',
-    imageId: 'sample-girl',
-    widthCm: 2.0,
-    heightCm: 3.0,
-    rotate: 0,
-    zoom: 1.0,
-    offsetX: 0,
-    offsetY: 0,
-    bgColor: '#ffffff',
-    isGrayscale: false,
-    brightness: 1.0,
-    contrast: 1.0,
-  },
-];
+// Default canvas photo arrangement (empty canvas initially)
+const INITIAL_SLOTS: PhotoSlot[] = [];
 
 const INITIAL_HISTORY_STATE: CanvasHistoryState = {
-  canvasSlots: INITIAL_SLOTS,
+  canvasSlots: [],
   orientation: 'portrait',
   marginCm: 1.0,
   gapCm: 0.2,
   borderStyle: 'crop',
   layoutMode: 'auto',
+  paperPresetId: 'a4-full',
+  customPaperWidthCm: 14.8,
+  customPaperHeightCm: 21.0,
 };
 
 // Calculate exact inner window padding/margins for any polaroid template card size
@@ -346,29 +284,10 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   // Image assets list
-  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([
-    {
-      id: 'sample-girl',
-      name: 'Model Siswi (Sample)',
-      src: sampleGirl,
-      isSample: true,
-    },
-    {
-      id: 'sample-woman',
-      name: 'Model Wanita (Sample)',
-      src: sampleWoman,
-      isSample: true,
-    },
-    {
-      id: 'sample-man',
-      name: 'Model Pria (Sample)',
-      src: sampleMan,
-      isSample: true,
-    },
-  ]);
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
 
   // Selected image from gallery to operate on
-  const [selectedGalleryImageId, setSelectedGalleryImageId] = useState<string>('sample-girl');
+  const [selectedGalleryImageId, setSelectedGalleryImageId] = useState<string>('');
 
   // Core Canvas & Page Layout States
   const [canvasSlots, setCanvasSlots] = useState<PhotoSlot[]>(INITIAL_SLOTS);
@@ -376,6 +295,42 @@ export default function App() {
   const [marginCm, setMarginCm] = useState<number>(1.0);
   const [gapCm, setGapCm] = useState<number>(0.2);
   const [borderStyle, setBorderStyle] = useState<'none' | 'solid' | 'dotted' | 'crop'>('crop'); // crop marks by default for high end look
+
+  // Paper preset and scrap paper states (Standard A4 or Leftover/Scrap Paper from A4)
+  const [paperPresetId, setPaperPresetId] = useState<string>('a4-full');
+  const [customPaperWidthCm, setCustomPaperWidthCm] = useState<number>(14.8);
+  const [customPaperHeightCm, setCustomPaperHeightCm] = useState<number>(21.0);
+
+  // Active paper preset
+  const selectedPaperPreset = useMemo(() => {
+    return PAPER_PRESETS.find((p) => p.id === paperPresetId) || PAPER_PRESETS[0];
+  }, [paperPresetId]);
+
+  const isScrapPaper = paperPresetId !== 'a4-full';
+
+  // Base portrait dimensions (strictly constrained to max A4 dimensions: 21.0 x 29.7 cm)
+  const basePaperWidth = useMemo(() => {
+    if (paperPresetId === 'custom-scrap') {
+      return Math.min(21.0, Math.max(2.0, customPaperWidthCm));
+    }
+    return selectedPaperPreset.widthCm;
+  }, [paperPresetId, customPaperWidthCm, selectedPaperPreset]);
+
+  const basePaperHeight = useMemo(() => {
+    if (paperPresetId === 'custom-scrap') {
+      return Math.min(29.7, Math.max(2.0, customPaperHeightCm));
+    }
+    return selectedPaperPreset.heightCm;
+  }, [paperPresetId, customPaperHeightCm, selectedPaperPreset]);
+
+  // Actual effective paper dimensions based on current orientation
+  const effectivePaperWidthCm = useMemo(() => {
+    return orientation === 'portrait' ? basePaperWidth : basePaperHeight;
+  }, [orientation, basePaperWidth, basePaperHeight]);
+
+  const effectivePaperHeightCm = useMemo(() => {
+    return orientation === 'portrait' ? basePaperHeight : basePaperWidth;
+  }, [orientation, basePaperWidth, basePaperHeight]);
 
   // Layout Mode States
   const [layoutMode, setLayoutMode] = useState<'auto' | 'freeform'>('auto');
@@ -394,7 +349,7 @@ export default function App() {
   const [addPolaroidFont, setAddPolaroidFont] = useState<'handwritten' | 'sans' | 'typewriter'>('handwritten');
 
   // Selected single canvas slot for specific tuning controls
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>('slot-3');
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
   // Canvas visual scaling on screen
   const [canvasZoom, setCanvasZoom] = useState<number>(55); // fits standard screen at 55% zoom
@@ -424,7 +379,10 @@ export default function App() {
     updatedMargin?: number,
     updatedGap?: number,
     updatedBorderStyle?: 'none' | 'solid' | 'dotted' | 'crop',
-    updatedLayoutMode?: 'auto' | 'freeform'
+    updatedLayoutMode?: 'auto' | 'freeform',
+    updatedPaperPresetId?: string,
+    updatedCustomPaperW?: number,
+    updatedCustomPaperH?: number
   ) => {
     const slotsToSave = updatedSlots !== undefined ? updatedSlots : canvasSlots;
     const orientationToSave = updatedOrientation !== undefined ? updatedOrientation : orientation;
@@ -432,6 +390,9 @@ export default function App() {
     const gapToSave = updatedGap !== undefined ? updatedGap : gapCm;
     const borderStyleToSave = updatedBorderStyle !== undefined ? updatedBorderStyle : borderStyle;
     const layoutModeToSave = updatedLayoutMode !== undefined ? updatedLayoutMode : layoutMode;
+    const paperPresetToSave = updatedPaperPresetId !== undefined ? updatedPaperPresetId : paperPresetId;
+    const customWToSave = updatedCustomPaperW !== undefined ? updatedCustomPaperW : customPaperWidthCm;
+    const customHToSave = updatedCustomPaperH !== undefined ? updatedCustomPaperH : customPaperHeightCm;
 
     const nextState: CanvasHistoryState = {
       canvasSlots: JSON.parse(JSON.stringify(slotsToSave)), // Deep copy array to avoid mutation bugs
@@ -440,6 +401,9 @@ export default function App() {
       gapCm: gapToSave,
       borderStyle: borderStyleToSave,
       layoutMode: layoutModeToSave,
+      paperPresetId: paperPresetToSave,
+      customPaperWidthCm: customWToSave,
+      customPaperHeightCm: customHToSave,
     };
 
     setHistory((prev) => {
@@ -474,6 +438,9 @@ export default function App() {
       setGapCm(targetState.gapCm);
       setBorderStyle(targetState.borderStyle);
       setLayoutMode(targetState.layoutMode);
+      if (targetState.paperPresetId) setPaperPresetId(targetState.paperPresetId);
+      if (targetState.customPaperWidthCm !== undefined) setCustomPaperWidthCm(targetState.customPaperWidthCm);
+      if (targetState.customPaperHeightCm !== undefined) setCustomPaperHeightCm(targetState.customPaperHeightCm);
 
       showToast("Membatalkan tindakan (Undo).");
     } else {
@@ -495,6 +462,9 @@ export default function App() {
       setGapCm(targetState.gapCm);
       setBorderStyle(targetState.borderStyle);
       setLayoutMode(targetState.layoutMode);
+      if (targetState.paperPresetId) setPaperPresetId(targetState.paperPresetId);
+      if (targetState.customPaperWidthCm !== undefined) setCustomPaperWidthCm(targetState.customPaperWidthCm);
+      if (targetState.customPaperHeightCm !== undefined) setCustomPaperHeightCm(targetState.customPaperHeightCm);
 
       showToast("Mengulang tindakan (Redo).");
     } else {
@@ -600,8 +570,8 @@ export default function App() {
         const w = isRotated90 ? targetSlot.heightCm : targetSlot.widthCm;
         const h = isRotated90 ? targetSlot.widthCm : targetSlot.heightCm;
 
-        const pW = orientation === 'portrait' ? 21.0 : 29.7;
-        const pH = orientation === 'portrait' ? 29.7 : 21.0;
+        const pW = effectivePaperWidthCm;
+        const pH = effectivePaperHeightCm;
 
         // Clip positions so elements never spill outside page borders or paper margins
         newX = Math.max(marginCm, Math.min(pW - marginCm - w, newX));
@@ -633,7 +603,7 @@ export default function App() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, canvasSlots, isSnapToGrid, gridStepCm, canvasZoom, marginCm, orientation]);
+  }, [dragState, canvasSlots, isSnapToGrid, gridStepCm, canvasZoom, marginCm, effectivePaperWidthCm, effectivePaperHeightCm]);
 
   // Handle switching between Auto-flow and Freeform layouts cleanly with conversions
   const handleSwitchLayoutMode = (newMode: 'auto' | 'freeform') => {
@@ -641,8 +611,8 @@ export default function App() {
     
     if (newMode === 'freeform') {
       // Convert current auto-flow positions to static centimeter coordinates
-      const pW = orientation === 'portrait' ? 21.0 : 29.7;
-      const pH = orientation === 'portrait' ? 29.7 : 21.0;
+      const pW = effectivePaperWidthCm;
+      const pH = effectivePaperHeightCm;
       
       const computedCoords = computeAutoLayoutCoords(canvasSlots, pW, pH, marginCm, gapCm);
       
@@ -734,8 +704,30 @@ export default function App() {
     fileInputRef.current?.click();
   };
 
+  // Delete image from user's gallery
+  const handleDeleteGalleryImage = (e: React.MouseEvent, imgId: string) => {
+    e.stopPropagation();
+    const remaining = uploadedImages.filter((img) => img.id !== imgId);
+    setUploadedImages(remaining);
+    if (selectedGalleryImageId === imgId) {
+      setSelectedGalleryImageId(remaining.length > 0 ? remaining[0].id : '');
+    }
+    showToast("Foto berhasil dihapus dari galeri.");
+  };
+
   // Add items to canvas logic
   const handleAddToCanvas = () => {
+    if (uploadedImages.length === 0) {
+      showToast("Silakan unggah foto ke galeri terlebih dahulu.");
+      triggerFileSelect();
+      return;
+    }
+    const targetImageId = selectedGalleryImageId || uploadedImages[0]?.id;
+    if (!targetImageId) {
+      showToast("Silakan pilih foto dari galeri terlebih dahulu.");
+      return;
+    }
+
     const { w, h } = getPresetDimensions(addSizePreset);
     const newSlots: PhotoSlot[] = [];
     const pIndex = paginatedPages.length - 1 >= 0 ? paginatedPages.length - 1 : 0;
@@ -747,7 +739,7 @@ export default function App() {
 
       newSlots.push({
         id: `slot-${Date.now()}-${Math.random().toString(36).substr(2, 5)}-${i}`,
-        imageId: selectedGalleryImageId,
+        imageId: targetImageId,
         widthCm: w,
         heightCm: h,
         rotate: 0,
@@ -758,6 +750,7 @@ export default function App() {
         isGrayscale: addGrayscale,
         brightness: 1.0,
         contrast: 1.0,
+        saturation: 1.0,
         
         // Coordinates for freeform canvas positioning
         xCm: layoutMode === 'freeform' ? marginCm + cascadeOffset : undefined,
@@ -783,9 +776,20 @@ export default function App() {
 
   // Auto fill entire page sheet with the selected gallery image
   const handleAutoFillPage = () => {
+    if (uploadedImages.length === 0) {
+      showToast("Silakan unggah foto ke galeri terlebih dahulu.");
+      triggerFileSelect();
+      return;
+    }
+    const targetImageId = selectedGalleryImageId || uploadedImages[0]?.id;
+    if (!targetImageId) {
+      showToast("Silakan pilih foto dari galeri terlebih dahulu.");
+      return;
+    }
+
     const { w, h } = getPresetDimensions(addSizePreset);
-    const pW = orientation === 'portrait' ? 21.0 : 29.7;
-    const pH = orientation === 'portrait' ? 29.7 : 21.0;
+    const pW = effectivePaperWidthCm;
+    const pH = effectivePaperHeightCm;
     const printW = pW - (2 * marginCm);
     const printH = pH - (2 * marginCm);
     const isPolaroidPreset = addSizePreset.startsWith('polaroid-');
@@ -810,7 +814,7 @@ export default function App() {
 
         filledSlots.push({
           id: `fill-${Date.now()}-${r}-${c}`,
-          imageId: selectedGalleryImageId,
+          imageId: targetImageId,
           widthCm: w,
           heightCm: h,
           rotate: 0,
@@ -821,6 +825,7 @@ export default function App() {
           isGrayscale: addGrayscale,
           brightness: 1.0,
           contrast: 1.0,
+          saturation: 1.0,
 
           xCm: layoutMode === 'freeform' ? parseFloat(xCoord.toFixed(2)) : undefined,
           yCm: layoutMode === 'freeform' ? parseFloat(yCoord.toFixed(2)) : undefined,
@@ -915,8 +920,76 @@ export default function App() {
     setGapCm(0.2);
     setBorderStyle('crop');
     setOrientation('portrait');
-    saveToHistory(canvasSlots, 'portrait', 1.0, 0.2, 'crop'); // Save resetting to history!
-    showToast("Pengaturan layout kertas berhasil dikembalikan ke default.");
+    setPaperPresetId('a4-full');
+    setCustomPaperWidthCm(14.8);
+    setCustomPaperHeightCm(21.0);
+    saveToHistory(canvasSlots, 'portrait', 1.0, 0.2, 'crop', layoutMode, 'a4-full', 21.0, 29.7); // Save resetting to history!
+    showToast("Pengaturan layout kertas berhasil dikembalikan ke default A4.");
+  };
+
+  // Change Paper Preset (Standard A4 or Leftover Scrap Paper cuts)
+  const handleSelectPaperPreset = (presetId: string) => {
+    setPaperPresetId(presetId);
+    const found = PAPER_PRESETS.find((p) => p.id === presetId);
+    let nextW = customPaperWidthCm;
+    let nextH = customPaperHeightCm;
+    if (found && presetId !== 'custom-scrap') {
+      nextW = found.widthCm;
+      nextH = found.heightCm;
+      setCustomPaperWidthCm(found.widthCm);
+      setCustomPaperHeightCm(found.heightCm);
+    }
+    saveToHistory(
+      canvasSlots,
+      orientation,
+      marginCm,
+      gapCm,
+      borderStyle,
+      layoutMode,
+      presetId,
+      nextW,
+      nextH
+    );
+    showToast(
+      found && found.category === 'scrap'
+        ? `✂️ Kertas sisa aktif: ${found.name} (${found.widthCm} × ${found.heightCm} cm)`
+        : `📄 Ukuran kertas diatur ke ${found?.name || 'A4 Standar'}.`
+    );
+  };
+
+  // Change Custom Scrap dimensions with strict A4 limits enforcement
+  const handleCustomPaperDimensionChange = (type: 'width' | 'height', valStr: string) => {
+    const val = parseFloat(valStr);
+    if (isNaN(val)) return;
+
+    // Strict physical limit: cannot exceed standard A4 sheet dimensions!
+    const maxW = orientation === 'portrait' ? 21.0 : 29.7;
+    const maxH = orientation === 'portrait' ? 29.7 : 21.0;
+
+    let newW = customPaperWidthCm;
+    let newH = customPaperHeightCm;
+
+    if (type === 'width') {
+      if (val > maxW) {
+        showToast(`⚠️ Kertas sisa tidak boleh melebihi batas A4 (${maxW} cm)! Nilai disesuaikan.`);
+        newW = maxW;
+      } else {
+        newW = Math.max(2.0, Math.min(maxW, val));
+      }
+      setCustomPaperWidthCm(newW);
+    } else {
+      if (val > maxH) {
+        showToast(`⚠️ Kertas sisa tidak boleh melebihi batas A4 (${maxH} cm)! Nilai disesuaikan.`);
+        newH = maxH;
+      } else {
+        newH = Math.max(2.0, Math.min(maxH, val));
+      }
+      setCustomPaperHeightCm(newH);
+    }
+
+    if (paperPresetId !== 'custom-scrap') {
+      setPaperPresetId('custom-scrap');
+    }
   };
 
   // Set Paper Orientation with History
@@ -954,8 +1027,8 @@ export default function App() {
   // Page layout packing algorithm simulation
   const paginatedPages = useMemo(() => {
     if (layoutMode === 'auto') {
-      const pageWidth = orientation === 'portrait' ? 21.0 : 29.7;
-      const pageHeight = orientation === 'portrait' ? 29.7 : 21.0;
+      const pageWidth = effectivePaperWidthCm;
+      const pageHeight = effectivePaperHeightCm;
       const printableWidth = pageWidth - 2 * marginCm;
       const printableHeight = pageHeight - 2 * marginCm;
       
@@ -1026,13 +1099,13 @@ export default function App() {
 
       return pages;
     }
-  }, [canvasSlots, orientation, marginCm, gapCm, layoutMode]);
+  }, [canvasSlots, effectivePaperWidthCm, effectivePaperHeightCm, marginCm, gapCm, layoutMode]);
 
-  // Render a specific A4 page at target DPI (e.g. 300 DPI for ultra sharp studio prints)
+  // Render a specific page at target DPI (e.g. 300 DPI for ultra sharp studio prints)
   const renderPageToCanvas = async (pageIndex: number, dpi: number = 300): Promise<HTMLCanvasElement> => {
     const canvas = document.createElement('canvas');
-    const pW = orientation === 'portrait' ? 21.0 : 29.7;
-    const pH = orientation === 'portrait' ? 29.7 : 21.0;
+    const pW = effectivePaperWidthCm;
+    const pH = effectivePaperHeightCm;
     const pxPerCm = dpi / 2.54;
 
     canvas.width = Math.round(pW * pxPerCm);
@@ -1105,7 +1178,7 @@ export default function App() {
           ctx.rect(photoX, photoY, photoW, photoH);
           ctx.clip();
 
-          ctx.filter = `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast})`;
+          ctx.filter = `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast}) saturate(${slot.saturation ?? 1.0})`;
           ctx.translate(photoX + photoW / 2, photoY + photoH / 2);
           ctx.rotate((slot.rotate * Math.PI) / 180);
           ctx.scale(slot.zoom, slot.zoom);
@@ -1163,7 +1236,7 @@ export default function App() {
         ctx.fillRect(cardX, cardY, cardW, cardH);
 
         if (imgEl && imgEl.naturalWidth > 0) {
-          ctx.filter = `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast})`;
+          ctx.filter = `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast}) saturate(${slot.saturation ?? 1.0})`;
           ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
           ctx.rotate((slot.rotate * Math.PI) / 180);
           ctx.scale(slot.zoom, slot.zoom);
@@ -1236,7 +1309,8 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `PrintA4_Halaman_${pageIndex + 1}_${orientation}_${dpi}DPI.png`;
+        const pageLabel = isScrapPaper ? 'SisaKertas_' : '';
+        a.download = `PrintA4_${pageLabel}Halaman_${pageIndex + 1}_${effectivePaperWidthCm.toFixed(1)}x${effectivePaperHeightCm.toFixed(1)}cm_${dpi}DPI.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1314,7 +1388,17 @@ export default function App() {
 
         {/* Zone 2: Informational taglines & metadata (Clean unboxed inline layout) */}
         <div className="hidden md:flex items-center gap-2.5 text-xs text-neutral-400">
-          <span>Kertas A4 (21 x 29.7 cm)</span>
+          <span className="flex items-center gap-1 font-medium">
+            {isScrapPaper ? (
+              <>
+                <Scissors className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-amber-400 font-semibold">{selectedPaperPreset.name}</span>
+                <span>({effectivePaperWidthCm.toFixed(1)} × {effectivePaperHeightCm.toFixed(1)} cm)</span>
+              </>
+            ) : (
+              <span>Kertas A4 (21.0 × 29.7 cm)</span>
+            )}
+          </span>
           <span aria-hidden="true">·</span>
           <span>Sistem Cetak Offline Presisi</span>
           <span aria-hidden="true">·</span>
@@ -1451,55 +1535,84 @@ export default function App() {
             </div>
 
             {/* Upload Area Dropzone feel */}
-            {uploadedImages.length === 3 && (
+            {uploadedImages.length === 0 ? (
               <div 
                 onClick={triggerFileSelect}
-                className={`border border-dashed rounded-xl p-4 text-center cursor-pointer mb-3 transition ${
-                  theme === 'dark' ? 'border-slate-800 hover:border-slate-700 hover:bg-slate-900/50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer mb-1 transition group ${
+                  theme === 'dark' 
+                    ? 'border-slate-800 hover:border-blue-500 bg-slate-900/30 hover:bg-slate-900/60' 
+                    : 'border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/40'
                 }`}
               >
-                <p className="text-xs text-neutral-400">
-                  Seret & taruh foto di sini, atau klik untuk mengunggah dari komputer Anda (Mendukung multi-upload).
+                <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-110 transition">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <p className="text-xs font-bold text-slate-200 mb-1">
+                  Belum Ada Foto di Galeri
+                </p>
+                <p className="text-[11px] text-neutral-400">
+                  Klik di sini untuk mengunggah foto Anda (Mendukung multi-upload JPG, PNG, WebP).
                 </p>
               </div>
-            )}
+            ) : (
+              <div>
+                {/* Thumbnail Gallery Horizontal List */}
+                <div className="flex gap-2.5 overflow-x-auto pb-2 snap-x scrollbar-thin">
+                  {uploadedImages.map((img) => (
+                    <div
+                      key={img.id}
+                      onClick={() => setSelectedGalleryImageId(img.id)}
+                      className={`relative group flex-shrink-0 w-[72px] h-[72px] rounded-lg overflow-hidden cursor-pointer snap-start transition ${
+                        selectedGalleryImageId === img.id
+                          ? 'ring-2 ring-blue-500 scale-[1.03] shadow-md'
+                          : 'opacity-70 hover:opacity-100 hover:scale-[1.01]'
+                      }`}
+                    >
+                      <img src={img.src} alt={img.name} className="w-full h-full object-cover" />
+                      
+                      {/* Delete button from gallery on hover */}
+                      <button
+                        onClick={(e) => handleDeleteGalleryImage(e, img.id)}
+                        className="absolute top-1 right-1 w-5 h-5 bg-red-600/90 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-md z-10"
+                        title="Hapus foto ini dari galeri"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
 
-            {/* Thumbnail Gallery Horizontal List */}
-            <div className="flex gap-2.5 overflow-x-auto pb-2 snap-x scrollbar-thin">
-              {uploadedImages.map((img) => (
-                <div
-                  key={img.id}
-                  onClick={() => setSelectedGalleryImageId(img.id)}
-                  className={`relative flex-shrink-0 w-[72px] h-[72px] rounded-lg overflow-hidden cursor-pointer snap-start transition ${
-                    selectedGalleryImageId === img.id
-                      ? 'ring-2 ring-blue-500 scale-[1.03] shadow-md'
-                      : 'opacity-70 hover:opacity-100 hover:scale-[1.01]'
-                  }`}
-                >
-                  <img src={img.src} alt={img.name} className="w-full h-full object-cover" />
-                  {img.isSample && (
-                    <span className="absolute top-0.5 right-0.5 bg-neutral-900/80 text-[7px] text-amber-400 font-semibold uppercase tracking-widest px-1 py-0.2 rounded">
-                      Sample
-                    </span>
-                  )}
-                  {selectedGalleryImageId === img.id && (
-                    <div className="absolute inset-0 bg-blue-500/15 flex items-center justify-center">
-                      <div className="bg-blue-600 text-white rounded-full p-0.5">
-                        <Check className="w-3 h-3" />
-                      </div>
+                      {selectedGalleryImageId === img.id && (
+                        <div className="absolute inset-0 bg-blue-500/15 flex items-center justify-center pointer-events-none">
+                          <div className="bg-blue-600 text-white rounded-full p-0.5">
+                            <Check className="w-3 h-3" />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
+
+                  {/* Add more button tile */}
+                  <button
+                    onClick={triggerFileSelect}
+                    className={`flex-shrink-0 w-[72px] h-[72px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 transition ${
+                      theme === 'dark'
+                        ? 'border-slate-800 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900 text-slate-400 hover:text-slate-200'
+                        : 'border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="Unggah lebih banyak foto"
+                  >
+                    <Plus className="w-4 h-4 text-blue-500" />
+                    <span className="text-[9px] font-semibold">Tambah</span>
+                  </button>
                 </div>
-              ))}
-            </div>
-            
-            {/* Display Selected Image Name */}
-            <div className={`mt-2 px-2.5 py-1.5 rounded-md text-[11px] font-mono flex items-center justify-between ${
-              theme === 'dark' ? 'bg-slate-900 text-slate-400' : 'bg-slate-100 text-slate-600'
-            }`}>
-              <span className="truncate">Aktif: {uploadedImages.find(i => i.id === selectedGalleryImageId)?.name}</span>
-              <span className="text-blue-500 font-semibold shrink-0">Terpilih</span>
-            </div>
+                
+                {/* Display Selected Image Name */}
+                <div className={`mt-2 px-2.5 py-1.5 rounded-md text-[11px] font-mono flex items-center justify-between ${
+                  theme === 'dark' ? 'bg-slate-900 text-slate-400' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  <span className="truncate">Aktif: {uploadedImages.find(i => i.id === selectedGalleryImageId)?.name || 'Pilih foto'}</span>
+                  <span className="text-blue-500 font-semibold shrink-0">Terpilih</span>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* STEP 2: TAMBAHKAN KE LEMBAR */}
@@ -1753,7 +1866,7 @@ export default function App() {
                       alt=""
                       className="w-full h-full object-cover"
                       style={{
-                        filter: `grayscale(${activeSlot.isGrayscale ? 1 : 0}) brightness(${activeSlot.brightness}) contrast(${activeSlot.contrast})`,
+                        filter: `grayscale(${activeSlot.isGrayscale ? 1 : 0}) brightness(${activeSlot.brightness}) contrast(${activeSlot.contrast}) saturate(${activeSlot.saturation ?? 1.0})`,
                         backgroundColor: activeSlot.bgColor
                       }}
                     />
@@ -2096,6 +2209,36 @@ export default function App() {
                   />
                 </div>
 
+                {/* SATURATION */}
+                <div>
+                  <div className="flex justify-between text-[11px] text-neutral-400 mb-1 font-medium">
+                    <span>Saturasi (Saturation)</span>
+                    <span className="text-slate-200 font-mono">{Math.round((activeSlot.saturation ?? 1.0) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.0"
+                    max="2.0"
+                    step="0.05"
+                    value={activeSlot.saturation ?? 1.0}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      updateSelectedSlot((s) => ({ ...s, saturation: val }));
+                    }}
+                    onMouseUp={(e) => {
+                      const val = parseFloat((e.target as HTMLInputElement).value);
+                      const updated = canvasSlots.map((s) => s.id === activeSlot.id ? { ...s, saturation: val } : s);
+                      saveToHistory(updated);
+                    }}
+                    onTouchEnd={(e) => {
+                      const val = parseFloat((e.target as HTMLInputElement).value);
+                      const updated = canvasSlots.map((s) => s.id === activeSlot.id ? { ...s, saturation: val } : s);
+                      saveToHistory(updated);
+                    }}
+                    className="w-full h-1 accent-blue-500 cursor-pointer"
+                  />
+                </div>
+
                 {/* INDIVIDUAL BACKGROUND COLOR replacement (Hidden for polaroids since they always have white canvas frame backgrounds) */}
                 {!activeSlot.isPolaroid && (
                   <div>
@@ -2150,14 +2293,223 @@ export default function App() {
             </div>
           )}
 
-          {/* STEP 4: GLOBAL PAGE SETUP (PAPER OPTIONS) */}
+          {/* STEP 3: GLOBAL PAGE SETUP (PAPER OPTIONS & SCRAP PAPER) */}
           <section className="mb-6">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2 mb-3">
-              <span className="w-4 h-4 rounded bg-blue-500/10 text-blue-500 flex items-center justify-center text-[10px]">3</span>
-              Pengaturan Kertas A4
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <span className="w-4 h-4 rounded bg-blue-500/10 text-blue-500 flex items-center justify-center text-[10px]">3</span>
+                Pengaturan Kertas & Sisa Cetak
+              </h2>
+              {isScrapPaper && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                  <Scissors className="w-3 h-3" />
+                  Kertas Sisa
+                </span>
+              )}
+            </div>
 
             <div className="space-y-4">
+
+              {/* PAPER SIZE SELECTOR (A4 STANDAR VS KERTAS SISA CETAK) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] text-neutral-400 uppercase font-bold flex items-center gap-1">
+                    <FileText className="w-3.5 h-3.5 text-blue-500" />
+                    Ukuran Lembar Kertas
+                  </label>
+                  {isScrapPaper && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectPaperPreset('a4-full')}
+                      className="text-[10px] text-blue-400 hover:text-blue-300 transition flex items-center gap-1 cursor-pointer font-medium"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      Reset A4 Penuh
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  value={paperPresetId}
+                  onChange={(e) => handleSelectPaperPreset(e.target.value)}
+                  className={`w-full text-xs rounded-lg border p-2 font-semibold transition cursor-pointer ${
+                    theme === 'dark' 
+                      ? 'bg-slate-900 border-slate-700 text-slate-200 focus:border-blue-500' 
+                      : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500'
+                  }`}
+                >
+                  <optgroup label="📄 LEMBAR STANDAR">
+                    <option value="a4-full">A4 Standar Penuh (21.0 × 29.7 cm) — 100% Lembar</option>
+                  </optgroup>
+                  <optgroup label="✂️ KERTAS SISA CETAK (OFFCUT DARI A4)">
+                    <option value="scrap-a5">Sisa 1/2 A4 (A5 Melintang) — 14.8 × 21.0 cm (50% A4)</option>
+                    <option value="scrap-half-v">Sisa 1/2 A4 (Strip Memanjang) — 10.5 × 29.7 cm (50% A4)</option>
+                    <option value="scrap-third">Sisa 1/3 A4 (Brosur / Strip) — 9.9 × 21.0 cm (33% A4)</option>
+                    <option value="scrap-a6">Sisa 1/4 A4 (A6 / Kartu Pos) — 10.5 × 14.8 cm (25% A4)</option>
+                    <option value="scrap-4r">Sisa Potongan Foto 4R — 10.2 × 15.2 cm (Sisa 4R)</option>
+                    <option value="scrap-photobooth">Sisa Strip Photobooth — 5.0 × 15.0 cm</option>
+                  </optgroup>
+                  <optgroup label="📐 KUSTOM SISA KERTAS">
+                    <option value="custom-scrap">Kustom Sisa Kertas (Input Bebas Lebar & Tinggi)</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* CUSTOM SCRAP PAPER INPUTS */}
+              {paperPresetId === 'custom-scrap' && (
+                <div className={`p-3 rounded-xl border space-y-2.5 transition-all ${
+                  theme === 'dark' ? 'bg-amber-950/20 border-amber-800/40' : 'bg-amber-50/50 border-amber-200'
+                }`}>
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-400">
+                    <span className="flex items-center gap-1.5">
+                      <Scissors className="w-3.5 h-3.5" />
+                      Dimensi Sisa Kertas A4
+                    </span>
+                    <span className="text-[10px] text-amber-500/90 font-mono">
+                      Maks. {orientation === 'portrait' ? '21.0 × 29.7' : '29.7 × 21.0'} cm
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] text-neutral-400 uppercase font-bold mb-1">
+                        Lebar (cm)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="2.0"
+                        max={orientation === 'portrait' ? 21.0 : 29.7}
+                        value={customPaperWidthCm}
+                        onChange={(e) => handleCustomPaperDimensionChange('width', e.target.value)}
+                        className={`w-full text-xs rounded border p-1.5 text-center font-mono font-bold ${
+                          theme === 'dark' ? 'bg-slate-900 border-slate-700 text-amber-300' : 'bg-white border-slate-300 text-slate-800'
+                        }`}
+                      />
+                      <span className="text-[9px] text-neutral-500 block text-center mt-0.5">
+                        Maks. {orientation === 'portrait' ? '21.0' : '29.7'} cm
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-neutral-400 uppercase font-bold mb-1">
+                        Tinggi (cm)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="2.0"
+                        max={orientation === 'portrait' ? 29.7 : 21.0}
+                        value={customPaperHeightCm}
+                        onChange={(e) => handleCustomPaperDimensionChange('height', e.target.value)}
+                        className={`w-full text-xs rounded border p-1.5 text-center font-mono font-bold ${
+                          theme === 'dark' ? 'bg-slate-900 border-slate-700 text-amber-300' : 'bg-white border-slate-300 text-slate-800'
+                        }`}
+                      />
+                      <span className="text-[9px] text-neutral-500 block text-center mt-0.5">
+                        Maks. {orientation === 'portrait' ? '29.7' : '21.0'} cm
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* QUICK SCRAP PRESET SHORTCUTS */}
+                  <div className="pt-1">
+                    <span className="text-[9px] text-neutral-400 uppercase font-bold block mb-1">Potongan Cepat Sisa:</span>
+                    <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomPaperWidthCm(14.8);
+                          setCustomPaperHeightCm(21.0);
+                          showToast("Potongan 1/2 A4 (A5) dipilih.");
+                        }}
+                        className="py-1 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-center truncate font-medium transition cursor-pointer"
+                      >
+                        1/2 A4 (A5)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomPaperWidthCm(10.5);
+                          setCustomPaperHeightCm(14.8);
+                          showToast("Potongan 1/4 A4 (A6) dipilih.");
+                        }}
+                        className="py-1 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-center truncate font-medium transition cursor-pointer"
+                      >
+                        1/4 A4 (A6)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomPaperWidthCm(10.2);
+                          setCustomPaperHeightCm(15.2);
+                          showToast("Potongan sisa foto 4R dipilih.");
+                        }}
+                        className="py-1 px-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-center truncate font-medium transition cursor-pointer"
+                      >
+                        Sisa 4R
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-neutral-400 flex items-start gap-1.5 bg-black/20 p-2 rounded-lg">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Batas Fisik:</strong> Karena berasal dari sisa lembar A4, dimensi tidak boleh melebihi ukuran lembar A4 ({orientation === 'portrait' ? '21.0 × 29.7' : '29.7 × 21.0'} cm).
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* VISUAL DIAGRAM & EFFICIENCY CARD */}
+              <div className={`p-2.5 rounded-xl border flex items-center gap-3 transition-all ${
+                isScrapPaper 
+                  ? (theme === 'dark' ? 'bg-amber-950/15 border-amber-900/30' : 'bg-amber-50/40 border-amber-200/60')
+                  : (theme === 'dark' ? 'bg-slate-950/30 border-slate-800' : 'bg-slate-50 border-slate-200')
+              }`}>
+                {/* Mini proportional A4 ghost thumbnail */}
+                <div 
+                  className="relative w-11 h-15 bg-slate-800/80 border border-dashed border-slate-600 rounded flex items-center justify-center shrink-0 overflow-hidden"
+                  title="Ilustrasi proporsi sisa kertas terhadap lembar A4 utuh"
+                >
+                  <span className="text-[8px] text-neutral-500 font-bold uppercase select-none">A4</span>
+                  {/* Active piece footprint */}
+                  <div 
+                    className={`absolute bottom-0 left-0 transition-all ${
+                      isScrapPaper ? 'bg-amber-500/40 border-t border-r border-amber-400' : 'bg-blue-600/40 border-t border-r border-blue-500'
+                    }`}
+                    style={{
+                      width: `${Math.min(100, (effectivePaperWidthCm / (orientation === 'portrait' ? 21.0 : 29.7)) * 100)}%`,
+                      height: `${Math.min(100, (effectivePaperHeightCm / (orientation === 'portrait' ? 29.7 : 21.0)) * 100)}%`,
+                    }}
+                  />
+                </div>
+
+                <div className="flex-1 min-w-0 text-xs">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-bold text-slate-200 truncate">
+                      {selectedPaperPreset.name}
+                    </span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                      isScrapPaper 
+                        ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' 
+                        : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                    }`}>
+                      {isScrapPaper ? 'Kertas Sisa' : 'A4 Penuh'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+                    {effectivePaperWidthCm.toFixed(1)} × {effectivePaperHeightCm.toFixed(1)} cm
+                    <span className="text-neutral-500 font-sans ml-1">
+                      ({((effectivePaperWidthCm * effectivePaperHeightCm) / 623.7 * 100).toFixed(0)}% A4)
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-1 text-[10px] mt-1 text-emerald-400">
+                    <Check className="w-3 h-3 shrink-0" />
+                    <span>{isScrapPaper ? 'Hemat kertas • Memanfaatkan sisa cetak' : 'Lembar cetak standar utuh'}</span>
+                  </div>
+                </div>
+              </div>
               
               {/* LAYOUT MODE SEGMENTED CONTROL */}
               <div>
@@ -2257,7 +2609,7 @@ export default function App() {
 
               {/* Orientation */}
               <div>
-                <label className="block text-[10px] text-neutral-400 uppercase font-bold mb-1.5">Orientasi Kertas A4</label>
+                <label className="block text-[10px] text-neutral-400 uppercase font-bold mb-1.5">Orientasi Lembar Kertas</label>
                 <div className="flex p-1 bg-black/20 rounded-lg border border-slate-800">
                   <button
                     onClick={() => handleSetOrientation('portrait')}
@@ -2479,21 +2831,25 @@ export default function App() {
                 <div key={pageIndex} className="flex flex-col items-center gap-2.5">
                   
                   {/* Digital Sheet Index Header */}
-                  <div className="flex items-center justify-between w-full max-w-[21cm] px-2.5">
+                  <div 
+                    className="flex items-center justify-between w-full px-2.5 transition-all"
+                    style={{ maxWidth: `${Math.max(16, effectivePaperWidthCm * (canvasZoom / 100))}cm` }}
+                  >
                     <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5 uppercase tracking-wider">
                       <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                      Halaman {pageIndex + 1} dari {paginatedPages.length}
+                      Halaman {pageIndex + 1} dari {paginatedPages.length} {isScrapPaper ? '(Kertas Sisa)' : ''}
                     </span>
-                    <span className="text-[10px] font-mono text-neutral-500">
-                      Ukuran Cetak: {orientation === 'portrait' ? '21.0 x 29.7' : '29.7 x 21.0'} cm (A4)
+                    <span className="text-[10px] font-mono text-neutral-500 flex items-center gap-1">
+                      {isScrapPaper && <Scissors className="w-3 h-3 text-amber-500" />}
+                      Ukuran Cetak: {effectivePaperWidthCm.toFixed(1)} × {effectivePaperHeightCm.toFixed(1)} cm ({selectedPaperPreset.name})
                     </span>
                   </div>
 
-                  {/* PROPORTIONAL A4 SHEET PREVIEW CARD */}
+                  {/* PROPORTIONAL SHEET PREVIEW CARD */}
                   <div 
                     style={{ 
-                      width: `${(orientation === 'portrait' ? 21 : 29.7) * (canvasZoom / 100)}cm`,
-                      height: `${(orientation === 'portrait' ? 29.7 : 21) * (canvasZoom / 100)}cm`,
+                      width: `${effectivePaperWidthCm * (canvasZoom / 100)}cm`,
+                      height: `${effectivePaperHeightCm * (canvasZoom / 100)}cm`,
                       transition: 'width 0.2s ease, height 0.2s ease',
                     }}
                     className="studio-canvas-shadow border border-neutral-300 dark:border-slate-800 bg-white rounded-sm overflow-hidden shrink-0 relative"
@@ -2503,8 +2859,8 @@ export default function App() {
                       className="origin-top-left transition-all bg-white select-none"
                       style={{
                         transform: `scale(${canvasZoom / 100})`,
-                        width: orientation === 'portrait' ? '21cm' : '29.7cm',
-                        height: orientation === 'portrait' ? '29.7cm' : '21cm',
+                        width: `${effectivePaperWidthCm}cm`,
+                        height: `${effectivePaperHeightCm}cm`,
                       }}
                     >
                       <div 
@@ -2616,7 +2972,7 @@ export default function App() {
                                             alt=""
                                             className="w-full h-full object-cover select-none pointer-events-none"
                                             style={{
-                                              filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast})`,
+                                              filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast}) saturate(${slot.saturation ?? 1.0})`,
                                             }}
                                           />
                                         </div>
@@ -2668,7 +3024,7 @@ export default function App() {
                                         alt="Foto"
                                         className="w-full h-full object-cover select-none pointer-events-none"
                                         style={{
-                                          filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast})`,
+                                          filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast}) saturate(${slot.saturation ?? 1.0})`,
                                         }}
                                       />
                                     </div>
@@ -2763,62 +3119,31 @@ export default function App() {
               <div className="w-16 h-16 rounded-full bg-slate-800/80 flex items-center justify-center text-neutral-500 mb-4 animate-pulse">
                 <ImageIcon className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-slate-200 mb-2">Lembar Cetakan A4 Kosong</h3>
+              <h3 className="text-lg font-bold text-slate-200 mb-2">
+                Lembar Cetakan {isScrapPaper ? 'Kertas Sisa' : 'A4'} Siap Digunakan
+              </h3>
               <p className="text-sm text-neutral-400 leading-relaxed mb-6">
-                Belum ada foto yang ditempatkan di dalam kertas A4 Anda. Pilih salah satu foto dari galeri di kiri, tentukan ukuran preset cetak, dan klik tombol <strong>"Tambahkan ke Lembar"</strong> untuk mulai mendesain tata letak!
+                Belum ada foto yang ditempatkan di dalam kertas {selectedPaperPreset.name} ({effectivePaperWidthCm.toFixed(1)} × {effectivePaperHeightCm.toFixed(1)} cm) Anda. {uploadedImages.length === 0 ? "Silakan unggah foto dari komputer Anda terlebih dahulu untuk memulai penataan cetak." : "Pilih foto dari galeri di bilah kiri, tentukan ukuran preset cetak, dan klik tombol Tambahkan ke Lembar!"}
               </p>
-              <button
-                onClick={() => {
-                  const demo: PhotoSlot[] = [
-                    {
-                      id: 'demo-slot-1',
-                      imageId: 'sample-girl',
-                      widthCm: 5.4,
-                      heightCm: 8.6,
-                      rotate: 0,
-                      zoom: 1.15,
-                      offsetX: 0,
-                      offsetY: 0,
-                      bgColor: 'transparent',
-                      isGrayscale: false,
-                      brightness: 1.0,
-                      contrast: 1.0,
-                      xCm: 1.0,
-                      yCm: 1.0,
-                      pageIndex: 0,
-                      isPolaroid: true,
-                      polaroidCaption: 'Demo Instax 🎞️',
-                      polaroidFont: 'handwritten'
-                    },
-                    {
-                      id: 'demo-slot-2',
-                      imageId: 'sample-man',
-                      widthCm: 5.4,
-                      heightCm: 8.6,
-                      rotate: 0,
-                      zoom: 1.15,
-                      offsetX: 0,
-                      offsetY: 0,
-                      bgColor: 'transparent',
-                      isGrayscale: false,
-                      brightness: 1.0,
-                      contrast: 1.0,
-                      xCm: 7.0,
-                      yCm: 1.0,
-                      pageIndex: 0,
-                      isPolaroid: true,
-                      polaroidCaption: 'Retro Boy',
-                      polaroidFont: 'typewriter'
-                    }
-                  ];
-                  setCanvasSlots(demo);
-                  saveToHistory(demo);
-                  showToast("Demo layout Polaroid berhasil dimuat!");
-                }}
-                className="px-4 py-2 text-xs font-semibold text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition"
-              >
-                Muat Layout Contoh Polaroid
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {uploadedImages.length === 0 ? (
+                  <button
+                    onClick={triggerFileSelect}
+                    className="px-5 py-2.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-lg transition shadow-lg shadow-blue-600/20 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Unggah Foto Sekarang
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleAddToCanvas}
+                    className="px-5 py-2.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-lg transition shadow-lg shadow-blue-600/20 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Tambahkan Foto ke Lembar
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -2839,17 +3164,15 @@ export default function App() {
         {paginatedPages.map((pageSlots, pageIndex) => (
           <div 
             key={`print-page-${pageIndex}`}
-            className={`print-page-sheet bg-white text-black relative ${
-              orientation === 'landscape' ? 'print-page-sheet-landscape' : ''
-            }`}
+            className="print-page-sheet bg-white text-black relative"
             style={{
               padding: layoutMode === 'auto' ? `${marginCm}cm` : '0cm',
               gap: layoutMode === 'auto' ? `${gapCm}cm` : '0cm',
               display: layoutMode === 'auto' ? 'flex' : 'block',
               flexWrap: layoutMode === 'auto' ? 'wrap' : undefined,
               alignContent: layoutMode === 'auto' ? 'flex-start' : undefined,
-              width: orientation === 'portrait' ? '210mm' : '297mm',
-              height: orientation === 'portrait' ? '297mm' : '210mm',
+              width: `${effectivePaperWidthCm}cm`,
+              height: `${effectivePaperHeightCm}cm`,
               boxSizing: 'border-box',
             }}
           >
@@ -2910,7 +3233,7 @@ export default function App() {
                                 alt=""
                                 className="w-full h-full object-cover"
                                 style={{
-                                  filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast})`,
+                                  filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast}) saturate(${slot.saturation ?? 1.0})`,
                                 }}
                               />
                             </div>
@@ -2957,7 +3280,7 @@ export default function App() {
                             alt=""
                             className="w-full h-full object-cover"
                             style={{
-                              filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast})`,
+                              filter: `grayscale(${slot.isGrayscale ? 1 : 0}) brightness(${slot.brightness}) contrast(${slot.contrast}) saturate(${slot.saturation ?? 1.0})`,
                             }}
                           />
                         </div>
@@ -3123,8 +3446,14 @@ export default function App() {
                   <Printer className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-100 dark:text-slate-100">
-                    Cetak & Ekspor Lembar A4
+                  <h3 className="text-base font-bold text-slate-100 dark:text-slate-100 flex items-center gap-2">
+                    <span>Cetak & Ekspor Lembar {isScrapPaper ? 'Kertas Sisa' : 'A4'}</span>
+                    {isScrapPaper && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                        <Scissors className="w-3 h-3" />
+                        Sisa Cetak
+                      </span>
+                    )}
                   </h3>
                   <p className="text-[11px] text-neutral-400">
                     Pilih metode cetak langsung ke printer atau unduh file siap cetak skala 100% fisik
@@ -3140,20 +3469,33 @@ export default function App() {
             </div>
 
             {/* Quick Status Bar */}
-            <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-black/20 border border-slate-800 mb-5 text-center text-xs">
+            <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-black/20 border border-slate-800 mb-4 text-center text-xs">
               <div>
                 <span className="text-[10px] text-neutral-500 block uppercase font-bold">Ukuran Lembar</span>
-                <span className="font-semibold text-blue-400">Kertas A4 ({orientation === 'portrait' ? '21 x 29.7 cm' : '29.7 x 21 cm'})</span>
+                <span className="font-semibold text-blue-400">
+                  {isScrapPaper ? 'Sisa A4' : 'A4'} ({effectivePaperWidthCm.toFixed(1)} × {effectivePaperHeightCm.toFixed(1)} cm)
+                </span>
               </div>
               <div>
                 <span className="text-[10px] text-neutral-500 block uppercase font-bold">Total Halaman</span>
-                <span className="font-semibold text-emerald-400">{paginatedPages.length} Lembar A4</span>
+                <span className="font-semibold text-emerald-400">{paginatedPages.length} Lembar {isScrapPaper ? 'Sisa' : 'A4'}</span>
               </div>
               <div>
                 <span className="text-[10px] text-neutral-500 block uppercase font-bold">Total Foto</span>
                 <span className="font-semibold text-amber-400">{canvasSlots.length} Foto Cetak</span>
               </div>
             </div>
+
+            {/* Scrap Paper Tip Banner */}
+            {isScrapPaper && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 flex items-start gap-2 mb-4 leading-relaxed">
+                <Scissors className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                <div>
+                  <strong className="block text-amber-200 font-semibold mb-0.5">Panduan Memasukkan Kertas Sisa ke Printer:</strong>
+                  Masukkan potongan kertas sisa Anda ({effectivePaperWidthCm.toFixed(1)} × {effectivePaperHeightCm.toFixed(1)} cm) ke baki printer (rear feeder / bypass tray). Geser pemandu kertas (paper guides) printer agar potongan kertas terjepit lurus tanpa miring.
+                </div>
+              </div>
+            )}
 
             {/* Print Options Cards */}
             <div className="space-y-4">

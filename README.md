@@ -13,6 +13,17 @@ Dirancang untuk berjalan **100% offline** di lingkungan Linux, mendukung integra
   - **Template Polaroid**: Polaroid Mini (5.4x8.6 cm), Polaroid Klasik (8.8x10.7 cm), Polaroid Square (7.2x8.6 cm), Polaroid Wide (10.8x8.6 cm).
   - **Foto Standar**: 2R (6x9 cm), 3R (8.9x12.7 cm), 4R (10.2x15.2 cm).
   - **Kustom / Bebas**: Tentukan dimensi lebar & tinggi sendiri dalam centimeter.
+- **Dukungan Kertas Sisa Cetak (Scrap / Offcut A4 Paper)**:
+  - Memanfaatkan potongan sisa kertas dari cetakan sebelumnya untuk menghemat kertas tanpa membuang lembar A4 baru.
+  - **Pilihan Preset Potongan Sisa**:
+    - *Sisa 1/2 A4 (A5 Melintang)*: 14.8 × 21.0 cm (50% luas A4).
+    - *Sisa 1/2 A4 (Strip Memanjang)*: 10.5 × 29.7 cm (50% luas A4).
+    - *Sisa 1/3 A4 (Brosur / Strip)*: 9.9 × 21.0 cm (33% luas A4).
+    - *Sisa 1/4 A4 (A6 / Kartu Pos)*: 10.5 × 14.8 cm (25% luas A4).
+    - *Sisa Potongan Foto 4R*: 10.2 × 15.2 cm (offcut standar cetak foto).
+    - *Sisa Strip Photobooth*: 5.0 × 15.0 cm.
+  - **Kustom Ukuran Sisa Bebas**: Masukkan lebar dan tinggi (cm/mm) potongan kertas sisa Anda dengan pembatasan fisik ketat (tidak boleh melebihi ukuran fisik lembar A4, maks. $21.0 \times 29.7$ cm).
+  - **Visual Diagram A4**: Menampilkan ilustrasi proporsi potongan sisa terhadap lembar A4 penuh beserta persentase efisiensi luas kertas.
 - **Dua Mode Tata Letak**:
   - *Mode Otomatis (Auto-Flow Grid)*: Foto tersusun berurutan secara efisien dan rapi.
   - *Mode Bebas (Freeform Canvas)*: Geser dan letakkan foto di posisi mana saja dengan mouse.
@@ -20,6 +31,7 @@ Dirancang untuk berjalan **100% offline** di lingkungan Linux, mendukung integra
 - **Peralatan Sunting Individual per Foto**:
   - Zoom & Pan (geser horizontal & vertikal).
   - Rotasi bebas (0°, 90°, 180°, 270°) dengan penyesuaian rasio aspek tanpa terpotong (*zero-clipping*).
+  - Penyesuaian Kecerahan (*Brightness*), Kontras (*Contrast*), dan Saturasi Warna (*Saturation* 0% - 200%).
   - Ganti warna latar pas foto (Merah/Biru/Putih/Abu) & filter Hitam-Putih (B&W).
   - Kustomisasi tulisan memo polaroid dengan gaya huruf *Cursive*, *Modern Sans*, dan *Retro Typewriter*.
 - **Riwayat Undo & Redo Lengkap**:
