@@ -279,6 +279,95 @@ function computeAutoLayoutCoords(
   return coords;
 }
 
+// Compact auto-layout that redistributes items across each row so empty gaps are minimized.
+function getSlotDimensions(slot: PhotoSlot) {
+  const isRotated90 = slot.rotate === 90 || slot.rotate === 270;
+  return {
+    w: isRotated90 ? slot.heightCm : slot.widthCm,
+    h: isRotated90 ? slot.widthCm : slot.heightCm,
+  };
+}
+
+function computeCompactAutoLayoutCoords(
+  slots: PhotoSlot[],
+  pageWidth: number,
+  pageHeight: number,
+  margin: number,
+  gap: number
+): { id: string; xCm: number; yCm: number; pageIndex: number }[] {
+  if (slots.length === 0) return [];
+
+  const printableWidth = pageWidth - 2 * margin;
+  const printableHeight = pageHeight - 2 * margin;
+  const coords: { id: string; xCm: number; yCm: number; pageIndex: number }[] = [];
+
+  const getDim = (slot: PhotoSlot) => getSlotDimensions(slot);
+
+  let pageIndex = 0;
+  let currentY = margin;
+  let rowItems: PhotoSlot[] = [];
+  let rowHeight = 0;
+
+  const flushRow = (items: PhotoSlot[], rowTop: number) => {
+    if (items.length === 0) return;
+
+    const rowWidth = items.reduce((sum, item) => sum + getDim(item).w, 0) + gap * Math.max(0, items.length - 1);
+    const leftPadding = Math.max(0, (printableWidth - rowWidth) / 2);
+    let cursorX = margin + leftPadding;
+
+    items.forEach((item) => {
+      const dim = getDim(item);
+      coords.push({
+        id: item.id,
+        xCm: parseFloat(cursorX.toFixed(3)),
+        yCm: parseFloat(rowTop.toFixed(3)),
+        pageIndex,
+      });
+      cursorX += dim.w + gap;
+    });
+  };
+
+  for (const slot of slots) {
+    const dim = getDim(slot);
+
+    if (rowItems.length === 0) {
+      rowItems = [slot];
+      rowHeight = dim.h;
+      continue;
+    }
+
+    const rowWidth = rowItems.reduce((sum, item) => sum + getDim(item).w, 0) + gap * Math.max(0, rowItems.length - 1);
+    const nextRowWidth = rowWidth + dim.w + gap;
+
+    if (nextRowWidth <= printableWidth) {
+      rowItems.push(slot);
+      rowHeight = Math.max(rowHeight, dim.h);
+      continue;
+    }
+
+    flushRow(rowItems, currentY);
+
+    const nextY = currentY + rowHeight + gap;
+    if (nextY + dim.h > margin + printableHeight) {
+      pageIndex += 1;
+      currentY = margin;
+      rowItems = [slot];
+      rowHeight = dim.h;
+      continue;
+    }
+
+    currentY = nextY;
+    rowItems = [slot];
+    rowHeight = dim.h;
+  }
+
+  if (rowItems.length > 0) {
+    flushRow(rowItems, currentY);
+  }
+
+  return coords;
+}
+
 export default function App() {
   // Theme state (Dark Mode by default as requested for studio feels)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -406,10 +495,9 @@ export default function App() {
       customPaperHeightCm: customHToSave,
     };
 
+    const trimmedIndex = Math.min(historyIndex, 39);
     setHistory((prev) => {
-      // Eliminate any "future" redo history if we made changes after an Undo
-      const cleanHistory = prev.slice(0, historyIndex + 1);
-      // Limit: Keep last 40 states to prevent heavy memory footprints
+      const cleanHistory = prev.slice(0, trimmedIndex + 1);
       if (cleanHistory.length >= 40) {
         cleanHistory.shift();
       }
@@ -417,10 +505,8 @@ export default function App() {
     });
 
     setHistoryIndex((prevIndex) => {
-      if (history.length >= 40 && prevIndex >= 39) {
-        return 39;
-      }
-      return prevIndex + 1;
+      const nextIndex = Math.min(prevIndex + 1, 39);
+      return nextIndex;
     });
   };
 
@@ -631,10 +717,23 @@ export default function App() {
       saveToHistory(updatedSlots, orientation, marginCm, gapCm, borderStyle, 'freeform');
       showToast("Layout Bebas Aktif: Tarik foto untuk mengatur tata letaknya!");
     } else {
-      // Auto flow mode simply discards absolute positions
+      const pW = effectivePaperWidthCm;
+      const pH = effectivePaperHeightCm;
+      const computedCoords = computeCompactAutoLayoutCoords(canvasSlots, pW, pH, marginCm, gapCm);
+      const updatedSlots = canvasSlots.map((slot) => {
+        const coords = computedCoords.find((c) => c.id === slot.id);
+        return {
+          ...slot,
+          xCm: coords ? coords.xCm : marginCm,
+          yCm: coords ? coords.yCm : marginCm,
+          pageIndex: coords ? coords.pageIndex : 0,
+        };
+      });
+
+      setCanvasSlots(updatedSlots);
       setLayoutMode('auto');
-      saveToHistory(canvasSlots, orientation, marginCm, gapCm, borderStyle, 'auto');
-      showToast("Tata Letak Otomatis Aktif: Foto tersusun berurutan secara rapi.");
+      saveToHistory(updatedSlots, orientation, marginCm, gapCm, borderStyle, 'auto');
+      showToast("Tata Letak Otomatis Aktif: Foto tersusun rapat dan ruang kosong disesuaikan.");
     }
   };
 
@@ -774,7 +873,7 @@ export default function App() {
     showToast(`Ditambahkan ${addQuantity} cetakan foto ke lembar kerja.`);
   };
 
-  // Auto fill entire page sheet with the selected gallery image
+  // Auto-fill remaining printable space on the active page with the selected image.
   const handleAutoFillPage = () => {
     if (uploadedImages.length === 0) {
       showToast("Silakan unggah foto ke galeri terlebih dahulu.");
@@ -787,61 +886,113 @@ export default function App() {
       return;
     }
 
-    const { w, h } = getPresetDimensions(addSizePreset);
+    const baseSize = getPresetDimensions(addSizePreset);
     const pW = effectivePaperWidthCm;
     const pH = effectivePaperHeightCm;
-    const printW = pW - (2 * marginCm);
-    const printH = pH - (2 * marginCm);
+    const darkPad = Math.max(gapCm * 0.5, 0.1);
     const isPolaroidPreset = addSizePreset.startsWith('polaroid-');
+    const pageIndex = paginatedPages.length > 0 ? paginatedPages.length - 1 : 0;
 
-    // Approximate items per row & column
-    const cols = Math.floor((printW + gapCm) / (w + gapCm)) || 1;
-    const rows = Math.floor((printH + gapCm) / (h + gapCm)) || 1;
-    const totalFit = cols * rows;
+    const existingRects = (paginatedPages[pageIndex] || []).map((slot) => {
+      const { w: rectW, h: rectH } = getSlotDimensions(slot);
+      const coord = autoLayoutCoords.find((c) => c.id === slot.id);
+      return {
+        x: layoutMode === 'freeform' ? (slot.xCm ?? marginCm) : (coord?.xCm ?? marginCm),
+        y: layoutMode === 'freeform' ? (slot.yCm ?? marginCm) : (coord?.yCm ?? marginCm),
+        w: rectW,
+        h: rectH,
+      };
+    });
 
-    if (totalFit <= 0) {
-      showToast("Kesalahan: Ukuran foto melebihi kapasitas cetak kertas!");
+    const overlapsWithPlaced = (x: number, y: number, w: number, h: number, placed: Array<{ x: number; y: number; w: number; h: number }>) => {
+      const pad = darkPad;
+      return [...existingRects, ...placed].some((rect) => {
+        const x1 = x - pad;
+        const y1 = y - pad;
+        const x2 = x + w + pad;
+        const y2 = y + h + pad;
+        const r1 = rect.x - pad;
+        const r1y = rect.y - pad;
+        const r2 = rect.x + rect.w + pad;
+        const r2y = rect.y + rect.h + pad;
+        return x1 < r2 && x2 > r1 && y1 < r2y && y2 > r1y;
+      });
+    };
+
+    const candidatePlacements: Array<{ x: number; y: number; w: number; h: number; rotation: number; widthCm: number; heightCm: number }> = [];
+    const step = Math.max(0.2, gapCm);
+
+    const iterateCandidates = (widthCm: number, heightCm: number, rotation: number) => {
+      const boxW = rotation === 90 || rotation === 270 ? heightCm : widthCm;
+      const boxH = rotation === 90 || rotation === 270 ? widthCm : heightCm;
+
+      for (let y = marginCm; y + boxH <= pH - marginCm; y += step) {
+        for (let x = marginCm; x + boxW <= pW - marginCm; x += step) {
+          candidatePlacements.push({
+            x,
+            y,
+            w: boxW,
+            h: boxH,
+            rotation,
+            widthCm,
+            heightCm,
+          });
+        }
+      }
+    };
+
+    iterateCandidates(baseSize.w, baseSize.h, 0);
+    iterateCandidates(baseSize.h, baseSize.w, 90);
+    iterateCandidates(baseSize.h, baseSize.w, 270);
+
+    const placedRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const autoFilled: PhotoSlot[] = [];
+
+    const sortedCandidates = [...candidatePlacements].sort((a, b) => {
+      const aArea = a.w * a.h;
+      const bArea = b.w * b.h;
+      if (bArea !== aArea) return bArea - aArea;
+      if (a.y !== b.y) return a.y - b.y;
+      return a.x - b.x;
+    });
+
+    for (const candidate of sortedCandidates) {
+      if (overlapsWithPlaced(candidate.x, candidate.y, candidate.w, candidate.h, placedRects)) continue;
+
+      placedRects.push({ x: candidate.x, y: candidate.y, w: candidate.w, h: candidate.h });
+
+      autoFilled.push({
+        id: `fill-${Date.now()}-${candidate.x}-${candidate.y}-${candidate.rotation}`,
+        imageId: targetImageId,
+        widthCm: candidate.widthCm,
+        heightCm: candidate.heightCm,
+        rotate: candidate.rotation,
+        zoom: isPolaroidPreset ? 1.15 : 1.0,
+        offsetX: 0,
+        offsetY: 0,
+        bgColor: isPolaroidPreset ? 'transparent' : addBgColor,
+        isGrayscale: addGrayscale,
+        brightness: 1.0,
+        contrast: 1.0,
+        saturation: 1.0,
+        xCm: layoutMode === 'freeform' ? parseFloat(candidate.x.toFixed(2)) : undefined,
+        yCm: layoutMode === 'freeform' ? parseFloat(candidate.y.toFixed(2)) : undefined,
+        pageIndex: layoutMode === 'freeform' ? pageIndex : undefined,
+        isPolaroid: isPolaroidPreset,
+        polaroidCaption: isPolaroidPreset ? addPolaroidCaption : undefined,
+        polaroidFont: isPolaroidPreset ? addPolaroidFont : undefined,
+      });
+    }
+
+    if (autoFilled.length === 0) {
+      showToast("Tidak ada ruang kosong yang tersisa di halaman aktif untuk auto-fill.");
       return;
     }
 
-    const filledSlots: PhotoSlot[] = [];
-    const pIndex = paginatedPages.length - 1 >= 0 ? paginatedPages.length - 1 : 0;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const xCoord = marginCm + c * (w + gapCm);
-        const yCoord = marginCm + r * (h + gapCm);
-
-        filledSlots.push({
-          id: `fill-${Date.now()}-${r}-${c}`,
-          imageId: targetImageId,
-          widthCm: w,
-          heightCm: h,
-          rotate: 0,
-          zoom: isPolaroidPreset ? 1.15 : 1.0,
-          offsetX: 0,
-          offsetY: 0,
-          bgColor: isPolaroidPreset ? 'transparent' : addBgColor,
-          isGrayscale: addGrayscale,
-          brightness: 1.0,
-          contrast: 1.0,
-          saturation: 1.0,
-
-          xCm: layoutMode === 'freeform' ? parseFloat(xCoord.toFixed(2)) : undefined,
-          yCm: layoutMode === 'freeform' ? parseFloat(yCoord.toFixed(2)) : undefined,
-          pageIndex: layoutMode === 'freeform' ? pIndex : undefined,
-
-          isPolaroid: isPolaroidPreset,
-          polaroidCaption: isPolaroidPreset ? addPolaroidCaption : undefined,
-          polaroidFont: isPolaroidPreset ? addPolaroidFont : undefined,
-        });
-      }
-    }
-
-    const updated = [...canvasSlots, ...filledSlots];
+    const updated = [...canvasSlots, ...autoFilled];
     setCanvasSlots(updated);
-    saveToHistory(updated); // Save to undo/redo stack!
-    showToast(`Memenuhi halaman: Menambahkan ${filledSlots.length} foto secara maksimal.`);
+    saveToHistory(updated);
+    showToast(`Auto-fill: menambahkan ${autoFilled.length} foto ke ruang kosong yang tersisa, dengan rotasi otomatis bila perlu.`);
   };
 
   // Quick actions
@@ -1024,6 +1175,10 @@ export default function App() {
     return img ? img.src : '';
   }, [activeSlot, uploadedImages]);
 
+  const autoLayoutCoords = useMemo(() => {
+    return computeCompactAutoLayoutCoords(canvasSlots, effectivePaperWidthCm, effectivePaperHeightCm, marginCm, gapCm);
+  }, [canvasSlots, effectivePaperWidthCm, effectivePaperHeightCm, marginCm, gapCm]);
+
   // Page layout packing algorithm simulation
   const paginatedPages = useMemo(() => {
     if (layoutMode === 'auto') {
@@ -1118,7 +1273,7 @@ export default function App() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const slots = paginatedPages[pageIndex] || [];
-    const autoCoords = computeAutoLayoutCoords(canvasSlots, pW, pH, marginCm, gapCm);
+    const autoCoords = autoLayoutCoords;
 
     // Preload images for this page
     const imageMap = new Map<string, HTMLImageElement>();
@@ -1365,12 +1520,12 @@ export default function App() {
   };
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-300 ${
+    <div className={`h-screen flex flex-col font-sans transition-colors duration-300 overflow-hidden print:h-auto print:overflow-visible ${
       theme === 'dark' ? 'bg-[#0b0f19] text-slate-100' : 'bg-slate-50 text-slate-900'
     }`}>
       
       {/* HEADER SECTION - 3 Zone Contract (Top Bar Contract) */}
-      <header className={`no-print flex items-center justify-between px-6 py-4 border-b transition-colors duration-300 ${
+      <header className={`no-print shrink-0 flex items-center justify-between px-6 py-4 border-b transition-colors duration-300 ${
         theme === 'dark' ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200'
       }`}>
         {/* Zone 1: Brand Wordmark */}
@@ -1503,10 +1658,10 @@ export default function App() {
       )}
 
       {/* MAIN LAYOUT: Sidebar + Workspace Canvas */}
-      <div className="no-print flex flex-col lg:flex-row min-h-[calc(100vh-69px)]">
+      <div className="no-print flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
         
-        {/* SIDEBAR: CONTROL CENTER */}
-        <aside className={`w-full lg:w-[420px] shrink-0 p-5 border-r overflow-y-auto max-h-none lg:max-h-[calc(100vh-69px)] ${
+        {/* SIDEBAR: CONTROL CENTER - Fixed height, scrollable internally */}
+        <aside className={`w-full lg:w-[420px] shrink-0 p-5 border-r overflow-y-auto h-full ${
           theme === 'dark' ? 'bg-[#111827] border-slate-800' : 'bg-white border-slate-200'
         }`}>
           
@@ -1821,10 +1976,10 @@ export default function App() {
                     ? 'border-slate-800 hover:border-slate-700 bg-slate-900/60 text-slate-200'
                     : 'border-slate-200 hover:border-slate-300 bg-white text-slate-700'
                 }`}
-                title="Memaksimalkan penempatan sisa ruang pada 1 lembar kertas A4"
+                title="Isi ruang kosong yang tersisa di halaman aktif secara otomatis"
               >
                 <Layers className="w-3.5 h-3.5" />
-                Penuhi Kertas
+                Auto-fill
               </button>
             </div>
           </section>
@@ -2542,6 +2697,35 @@ export default function App() {
                     Bebas (Freeform)
                   </button>
                 </div>
+                <button
+                  onClick={() => {
+                    if (canvasSlots.length === 0) {
+                      showToast('Belum ada foto untuk dirapikan.');
+                      return;
+                    }
+                    const pW = effectivePaperWidthCm;
+                    const pH = effectivePaperHeightCm;
+                    const computedCoords = computeCompactAutoLayoutCoords(canvasSlots, pW, pH, marginCm, gapCm);
+                    const updatedSlots = canvasSlots.map((slot) => {
+                      const coords = computedCoords.find((c) => c.id === slot.id);
+                      return {
+                        ...slot,
+                        xCm: coords ? coords.xCm : marginCm,
+                        yCm: coords ? coords.yCm : marginCm,
+                        pageIndex: coords ? coords.pageIndex : 0,
+                      };
+                    });
+
+                    setCanvasSlots(updatedSlots);
+                    setLayoutMode('auto');
+                    saveToHistory(updatedSlots, orientation, marginCm, gapCm, borderStyle, 'auto');
+                    showToast('Foto dirapikan otomatis agar ruang kosong tersesuaikan.');
+                  }}
+                  type="button"
+                  className="mt-2 w-full py-1.5 text-[10px] font-semibold rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-400 hover:bg-blue-500/15 transition"
+                >
+                  Rapikan Otomatis
+                </button>
               </div>
 
               {/* SNAP-TO-GRID SETTINGS (Only shown if in Freeform mode) */}
@@ -2747,8 +2931,8 @@ export default function App() {
           </section>
         </aside>
 
-        {/* WORKSPACE PREVIEW (RIGHT MAIN AREA) */}
-        <main className={`flex-1 p-6 flex flex-col items-center justify-between overflow-x-auto min-h-0 ${
+        {/* WORKSPACE PREVIEW (RIGHT MAIN AREA) - Fixed height, scrollable internally */}
+        <main className={`flex-1 p-6 flex flex-col items-center overflow-x-auto overflow-y-auto h-full min-h-0 ${
           theme === 'dark' ? 'bg-[#0b0e17] studio-grid-dot' : 'bg-slate-100 studio-grid-dot'
         }`}>
           
