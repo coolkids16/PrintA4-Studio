@@ -1,0 +1,12 @@
+[package]
+name = "printa4-studio"
+version = "0.1.0"
+description = "PrintA4 Studio desktop app"
+authors = ["PrintA4 Studio"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

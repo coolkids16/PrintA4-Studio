@@ -2,6 +2,12 @@ node_modules/
 build/
 dist/
 coverage/
+.vite/
+src-tauri/target/
+src-tauri/gen/
+release/
+*.appimage
+*.AppImage
 .DS_Store
 *.log
 .env*

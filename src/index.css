@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+select {
+  color-scheme: light;
+}
+
+select option,
+select optgroup {
+  background-color: #ffffff;
+  color: #1e293b;
+}
+
+.dark select {
+  color-scheme: dark;
+}
+
+.dark select option,
+.dark select optgroup {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
 /* Custom classes for perfect A4 scaling and print outputs */
 @layer utilities {
   /* Hide standard browser page headers and footers, and force margin to 0 */

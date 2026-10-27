@@ -10,8 +10,9 @@ Dirancang untuk berjalan **100% offline** di lingkungan Linux, mendukung integra
 
 - **Preset Ukuran Lengkap**:
   - **Pas Foto Resmi**: 2x3 cm, 3x4 cm, 4x6 cm.
-  - **Template Polaroid**: Polaroid Mini (5.4x8.6 cm), Polaroid Klasik (8.8x10.7 cm), Polaroid Square (7.2x8.6 cm), Polaroid Wide (10.8x8.6 cm).
-  - **Foto Standar**: 2R (6x9 cm), 3R (8.9x12.7 cm), 4R (10.2x15.2 cm).
+  - **Template Polaroid**: Mini (5.4x8.6 cm), Square (7.2x8.6 cm), Wide (10.8x8.6 cm), Klasik (8.8x10.7 cm), Original (8.9x10.8 cm), dan Square Besar (10.8x10.8 cm).
+  - **Foto Standar**: 2R (6x9 cm), 3R (8.9x12.7 cm), 4R (10.2x15.2 cm), 5R, 6R, dan 8R.
+  - **Cetak Lembar Penuh**: A4 Borderless (21x29.7 cm).
   - **Kustom / Bebas**: Tentukan dimensi lebar & tinggi sendiri dalam centimeter.
 - **Dukungan Kertas Sisa Cetak (Scrap / Offcut A4 Paper)**:
   - Memanfaatkan potongan sisa kertas dari cetakan sebelumnya untuk menghemat kertas tanpa membuang lembar A4 baru.
@@ -29,7 +30,7 @@ Dirancang untuk berjalan **100% offline** di lingkungan Linux, mendukung integra
   - *Mode Bebas (Freeform Canvas)*: Geser dan letakkan foto di posisi mana saja dengan mouse.
   - *Snap-to-Grid*: Perekat otomatis ke kisi centimeter (0.1, 0.2, 0.5, 1.0 cm) dengan visualisasi garis bantu.
 - **Peralatan Sunting Individual per Foto**:
-  - Zoom & Pan (geser horizontal & vertikal).
+  - Zoom serta geser crop manual untuk foto Polaroid; foto biasa tetap menyediakan kontrol Pan X/Y.
   - Rotasi bebas (0°, 90°, 180°, 270°) dengan penyesuaian rasio aspek tanpa terpotong (*zero-clipping*).
   - Penyesuaian Kecerahan (*Brightness*), Kontras (*Contrast*), dan Saturasi Warna (*Saturation* 0% - 200%).
   - Ganti warna latar pas foto (Merah/Biru/Putih/Abu) & filter Hitam-Putih (B&W).
@@ -73,6 +74,19 @@ bun run preview
 ```bash
 bun run lint
 ```
+
+### 6. Jalankan sebagai Aplikasi Desktop Tauri
+Prasyarat Linux: Rust/Cargo, WebKitGTK 4.1, dan dependensi native Tauri untuk distro Anda.
+
+```bash
+# Jalankan window desktop dengan frontend dev server
+bun run tauri:dev
+
+# Build installer desktop
+bun run tauri:build
+```
+
+Installer Linux dibuat di `src-tauri/target/release/bundle/` (misalnya `.deb` dan `.rpm`).
 
 ---
 

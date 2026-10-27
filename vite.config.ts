@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: process.env.TAURI_ENV_PLATFORM ? './' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
